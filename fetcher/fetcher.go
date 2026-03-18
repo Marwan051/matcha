@@ -13,6 +13,7 @@ import (
 	"mime"
 	"mime/quotedprintable"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -46,6 +47,7 @@ type Email struct {
 	Subject     string
 	Body        string
 	Date        time.Time
+	IsRead      bool
 	MessageID   string
 	References  []string
 	Attachments []Attachment
@@ -67,6 +69,10 @@ func formatAddress(addr *imap.Address) string {
 		return addr.PersonalName + " <" + email + ">"
 	}
 	return email
+}
+
+func hasSeenFlag(flags []string) bool {
+	return slices.Contains(flags, imap.SeenFlag)
 }
 
 func decodePart(reader io.Reader, header mail.PartHeader) (string, error) {
@@ -261,7 +267,7 @@ func FetchMailboxEmails(account *config.Account, mailbox string, limit, offset u
 
 		messages := make(chan *imap.Message, chunkSize)
 		done := make(chan error, 1)
-		fetchItems := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid}
+		fetchItems := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid, imap.FetchFlags}
 
 		go func() {
 			done <- c.Fetch(seqset, fetchItems, messages)
@@ -324,6 +330,7 @@ func FetchMailboxEmails(account *config.Account, mailbox string, limit, offset u
 				To:        toAddrList,
 				Subject:   decodeHeader(msg.Envelope.Subject),
 				Date:      msg.Envelope.Date,
+				IsRead:    hasSeenFlag(msg.Flags),
 				AccountID: account.ID,
 			})
 		}
@@ -1065,7 +1072,7 @@ func FetchArchiveEmails(account *config.Account, limit, offset uint32) ([]Email,
 
 	messages := make(chan *imap.Message, limit)
 	done := make(chan error, 1)
-	fetchItems := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid}
+	fetchItems := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid, imap.FetchFlags}
 	go func() {
 		done <- c.Fetch(seqset, fetchItems, messages)
 	}()
@@ -1130,6 +1137,7 @@ func FetchArchiveEmails(account *config.Account, limit, offset uint32) ([]Email,
 			To:        toAddrList,
 			Subject:   decodeHeader(msg.Envelope.Subject),
 			Date:      msg.Envelope.Date,
+			IsRead:    hasSeenFlag(msg.Flags),
 			AccountID: account.ID,
 		})
 	}
