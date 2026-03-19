@@ -703,6 +703,25 @@ func (m *Inbox) GetMailbox() MailboxKind {
 	return m.mailbox
 }
 
+// MarkEmailAsRead marks an email as read by UID and account ID, updating it in all stores.
+func (m *Inbox) MarkEmailAsRead(uid uint32, accountID string) {
+	for i := range m.allEmails {
+		if m.allEmails[i].UID == uid && m.allEmails[i].AccountID == accountID {
+			m.allEmails[i].IsRead = true
+			break
+		}
+	}
+	if emails, ok := m.emailsByAccount[accountID]; ok {
+		for i := range emails {
+			if emails[i].UID == uid {
+				emails[i].IsRead = true
+				break
+			}
+		}
+	}
+	m.updateList()
+}
+
 // RemoveEmail removes an email by UID and account ID
 func (m *Inbox) RemoveEmail(uid uint32, accountID string) {
 	// Remove from account-specific list

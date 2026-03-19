@@ -894,6 +894,26 @@ func moveEmail(account *config.Account, uid uint32, sourceMailbox, destMailbox s
 	return c.UidMove(seqSet, destMailbox)
 }
 
+func MarkEmailAsReadInMailbox(account *config.Account, mailbox string, uid uint32) error {
+	c, err := connect(account)
+	if err != nil {
+		return err
+	}
+	defer c.Logout()
+
+	if _, err := c.Select(mailbox, false); err != nil {
+		return err
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
+
+	item := imap.FormatFlagsOp(imap.AddFlags, true)
+	flags := []interface{}{imap.SeenFlag}
+
+	return c.UidStore(seqSet, item, flags, nil)
+}
+
 func DeleteEmailFromMailbox(account *config.Account, mailbox string, uid uint32) error {
 	c, err := connect(account)
 	if err != nil {
