@@ -118,6 +118,49 @@ brews:
     # This tells Homebrew to just install the binary.
     install: |
       bin.install "matcha"
+# 'winget' configures the WinGet manifest generation and publication.
+winget:
+  - # Name of the package in WinGet.
+    name: matcha
+    # Unique package identifier used by WinGet.
+    package_identifier: floatpane.matcha
+    # WinGet publisher metadata.
+    publisher: floatpane
+    publisher_url: "https://matcha.floatpane.com"
+    publisher_support_url: "https://github.com/floatpane/matcha/issues"
+
+    # Package metadata.
+    short_description: "A beautiful and functional email client for your terminal."
+    description: |
+      A beautiful and functional email client for your terminal, built with Go and the charming Bubble Tea TUI library.
+      Never leave your command line to check your inbox or send an email again!
+    homepage: "https://matcha.floatpane.com"
+    license: MIT
+    tags:
+      - email
+      - terminal
+      - tui
+
+    # Use release changelog as WinGet release notes.
+    release_notes: "{{ .Changelog }}"
+
+    # Commit to a feature branch in winget-pkgs and open a PR.
+    repository:
+      owner: floatpane
+      name: winget-pkgs
+      branch: "{{ .ProjectName }}-{{ .Version }}"
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      pull_request:
+        enabled: true
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
+
+    # Commit author for manifest updates.
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
 
 # 'snapcrafts' configures the Snapcraft integration.
 snapcrafts:
