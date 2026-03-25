@@ -196,7 +196,7 @@ func TestComposerUpdate(t *testing.T) {
 			t.Errorf("Initial focusIndex should be %d (focusTo), got %d", focusTo, multiComposer.focusIndex)
 		}
 
-		// Tab through all fields: To -> Cc -> Bcc -> Subject -> Body -> Signature -> Attachment -> EncryptSMIME -> Send -> From (wrap) -> To (wrap)
+		// Tab through all fields: To -> Cc -> Bcc -> Subject -> Body -> Signature -> Attachment -> EncryptSMIME -> Send -> From (wrap)
 		model, _ := multiComposer.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // To -> Cc
 		multiComposer = model.(*Composer)
 		model, _ = multiComposer.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // Cc -> Bcc
@@ -220,7 +220,7 @@ func TestComposerUpdate(t *testing.T) {
 
 		// With multiple accounts, From field should be included in tab order
 		if multiComposer.focusIndex != focusTo {
-			t.Errorf("After eleven Tabs with multi-account, focusIndex should wrap to %d (focusTo), got %d", focusTo, multiComposer.focusIndex)
+			t.Errorf("After nine Tabs with multi-account, focusIndex should wrap to %d (focusTo), got %d", focusTo, multiComposer.focusIndex)
 		}
 	})
 }

@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/textarea"
@@ -210,7 +209,10 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Fixed rows: title, from, to, cc, bcc, subject, sig label,
 			// attachment, smime, button, blank, tip, help = 13
 			const fixedRows = 13
-			available := max(msg.Height-fixedRows, 6)
+			available := msg.Height - fixedRows
+			if available < 6 {
+				available = 6
+			}
 			bodyHeight := (available * 55) / 100
 			sigHeight := (available * 15) / 100
 			if bodyHeight < 3 {
@@ -225,14 +227,12 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case FileSelectedMsg:
 		// Avoid duplicates
-		if slices.Contains(m.attachmentPaths, msg.Path) {
-			return m, nil
+		for _, p := range m.attachmentPaths {
+			if p == msg.Path {
+				return m, nil
+			}
 		}
 		m.attachmentPaths = append(m.attachmentPaths, msg.Path)
-		// Clear any attachment-related plugin status
-		if strings.Contains(m.pluginStatus, "attachment") {
-			m.pluginStatus = ""
-		}
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -383,9 +383,6 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "backspace", "delete", "d":
 			if m.focusIndex == focusAttachment && len(m.attachmentPaths) > 0 {
 				m.attachmentPaths = m.attachmentPaths[:len(m.attachmentPaths)-1]
-				if len(m.attachmentPaths) == 0 && strings.Contains(m.pluginStatus, "attachment") {
-					m.pluginStatus = ""
-				}
 				return m, nil
 			}
 
@@ -405,7 +402,6 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.encryptSMIME = !m.encryptSMIME
 				}
 				return m, nil
-
 			case focusSend:
 				if msg.String() == "enter" {
 					acc := m.getSelectedAccount()
@@ -579,7 +575,6 @@ func (m *Composer) View() tea.View {
 		tip = "Enter: add file • backspace/d: remove last attachment"
 	case focusEncryptSMIME:
 		tip = "Press Space or Enter to toggle S/MIME encryption on or off."
-
 	case focusSend:
 		tip = "Press Enter to send the email."
 	}
@@ -596,7 +591,6 @@ func (m *Composer) View() tea.View {
 		m.signatureInput.View(),
 		attachmentStyle.Render(attachmentField),
 		smimeToggleStyle.Render(encField),
-
 		button,
 		"",
 	}
