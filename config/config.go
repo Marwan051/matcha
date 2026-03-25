@@ -33,6 +33,9 @@ type Account struct {
 	SMIMECert          string `json:"smime_cert,omitempty"`            // Path to the public certificate PEM
 	SMIMEKey           string `json:"smime_key,omitempty"`             // Path to the private key PEM
 	SMIMESignByDefault bool   `json:"smime_sign_by_default,omitempty"` // Whether to enable S/MIME signing by default
+
+	// OAuth2 settings
+	AuthMethod string `json:"auth_method,omitempty"` // "password" (default) or "oauth2"
 }
 
 // MailingList represents a named group of email addresses.
@@ -43,11 +46,12 @@ type MailingList struct {
 
 // Config stores the user's email configuration with multiple accounts.
 type Config struct {
-	Accounts      []Account     `json:"accounts"`
-	DisableImages bool          `json:"disable_images,omitempty"`
-	HideTips      bool          `json:"hide_tips,omitempty"`
-	Theme         string        `json:"theme,omitempty"`
-	MailingLists  []MailingList `json:"mailing_lists,omitempty"`
+	Accounts             []Account     `json:"accounts"`
+	DisableImages        bool          `json:"disable_images,omitempty"`
+	HideTips             bool          `json:"hide_tips,omitempty"`
+	DisableNotifications bool          `json:"disable_notifications,omitempty"`
+	Theme                string        `json:"theme,omitempty"`
+	MailingLists         []MailingList `json:"mailing_lists,omitempty"`
 }
 
 // GetIMAPServer returns the IMAP server address for the account.
@@ -186,13 +190,15 @@ func LoadConfig() (*Config, error) {
 		SMIMECert          string `json:"smime_cert,omitempty"`
 		SMIMEKey           string `json:"smime_key,omitempty"`
 		SMIMESignByDefault bool   `json:"smime_sign_by_default,omitempty"`
+		AuthMethod         string `json:"auth_method,omitempty"`
 	}
 	type diskConfig struct {
-		Accounts      []rawAccount  `json:"accounts"`
-		DisableImages bool          `json:"disable_images,omitempty"`
-		HideTips      bool          `json:"hide_tips,omitempty"`
-		Theme         string        `json:"theme,omitempty"`
-		MailingLists  []MailingList `json:"mailing_lists,omitempty"`
+		Accounts             []rawAccount  `json:"accounts"`
+		DisableImages        bool          `json:"disable_images,omitempty"`
+		HideTips             bool          `json:"hide_tips,omitempty"`
+		DisableNotifications bool          `json:"disable_notifications,omitempty"`
+		Theme                string        `json:"theme,omitempty"`
+		MailingLists         []MailingList `json:"mailing_lists,omitempty"`
 	}
 
 	var raw diskConfig
@@ -222,6 +228,7 @@ func LoadConfig() (*Config, error) {
 
 	config.DisableImages = raw.DisableImages
 	config.HideTips = raw.HideTips
+	config.DisableNotifications = raw.DisableNotifications
 	config.Theme = raw.Theme
 	config.MailingLists = raw.MailingLists
 	for _, rawAcc := range raw.Accounts {
@@ -239,6 +246,7 @@ func LoadConfig() (*Config, error) {
 			SMIMECert:          rawAcc.SMIMECert,
 			SMIMEKey:           rawAcc.SMIMEKey,
 			SMIMESignByDefault: rawAcc.SMIMESignByDefault,
+			AuthMethod:         rawAcc.AuthMethod,
 		}
 
 		if rawAcc.Password != "" {
