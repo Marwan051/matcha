@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1475,29 +1476,6 @@ func markdownToHTML(md []byte) []byte {
 	return clib.MarkdownToHTML(md)
 }
 
-// detectPlaintextOnly returns true when the body contains only plain text
-// (no images, no attachments, no links, and no common markdown/HTML formatting).
-func detectPlaintextOnly(body string, images map[string][]byte, attachments map[string][]byte) bool {
-	if len(images) > 0 || len(attachments) > 0 {
-		return false
-	}
-
-	// Patterns indicating non-plaintext content: markdown links/images, raw URLs, HTML tags,
-	// headers, lists, blockquotes, inline code, bold/italic markers.
-	linkRe := regexp.MustCompile(`\[[^\]]+\]\([^\)]+\)`)
-	urlRe := regexp.MustCompile(`https?://\S+|www\.\S+`)
-	htmlRe := regexp.MustCompile(`<[^>]+>`)               // crude HTML tag detection
-	mdHeaderRe := regexp.MustCompile(`(?m)^\s*#{1,6}\s+`) // markdown headers
-	mdListRe := regexp.MustCompile(`(?m)^\s*[-*+]\s+`)    // markdown lists
-	mdQuoteRe := regexp.MustCompile(`(?m)^\s*>\s+`)       // blockquote
-	mdFmtRe := regexp.MustCompile(`\*\*.+\*\*|__.+__|\*[^\*]+\*|_[^_]+_|` + "`" + `[^` + "`" + `]+` + "`")
-
-	if linkRe.MatchString(body) || urlRe.MatchString(body) || htmlRe.MatchString(body) || mdHeaderRe.MatchString(body) || mdListRe.MatchString(body) || mdQuoteRe.MatchString(body) || mdFmtRe.MatchString(body) {
-		return false
-	}
-	return true
-}
-
 func splitEmails(s string) []string {
 	if s == "" {
 		return nil
@@ -1544,8 +1522,7 @@ func sendEmail(account *config.Account, msg tui.SendEmailMsg) tea.Cmd {
 				continue
 			}
 			cid := fmt.Sprintf("%s%s@%s", uuid.NewString(), filepath.Ext(imgPath), "matcha")
-			// store raw image bytes; sender will base64-encode and wrap
-			images[cid] = imgData
+			images[cid] = []byte(base64.StdEncoding.EncodeToString(imgData))
 			body = strings.Replace(body, imgPath, "cid:"+cid, 1)
 		}
 
@@ -1561,9 +1538,7 @@ func sendEmail(account *config.Account, msg tui.SendEmailMsg) tea.Cmd {
 			attachments[filename] = fileData
 		}
 
-		// Auto-detect whether message is plaintext-only: no attachments, no images, and no links/formatting
-		plaintextOnly := detectPlaintextOnly(body, images, attachments)
-		err := sender.SendEmail(account, recipients, cc, bcc, msg.Subject, body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References, plaintextOnly, msg.SignSMIME, msg.EncryptSMIME)
+		err := sender.SendEmail(account, recipients, cc, bcc, msg.Subject, body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References, msg.SignSMIME, msg.EncryptSMIME)
 		if err != nil {
 			log.Printf("Failed to send email: %v", err)
 			return tui.EmailResultMsg{Err: err}

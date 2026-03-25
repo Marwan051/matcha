@@ -16,6 +16,7 @@ import (
 	"net/textproto"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -59,8 +60,29 @@ func generateMessageID(from string) string {
 	return fmt.Sprintf("<%x@%s>", buf, from)
 }
 
+// detectPlaintextOnly returns true when the body contains only plain text
+// (no images, no attachments, no links, and no common markdown/HTML formatting).
+func detectPlaintextOnly(body string, images map[string][]byte, attachments map[string][]byte) bool {
+	if len(images) > 0 || len(attachments) > 0 {
+		return false
+	}
+
+	linkRe := regexp.MustCompile(`\[[^\]]+\]\([^\)]+\)`)
+	urlRe := regexp.MustCompile(`https?://\S+|www\.\S+`)
+	htmlRe := regexp.MustCompile(`<[^>]+>`)               // crude HTML tag detection
+	mdHeaderRe := regexp.MustCompile(`(?m)^\s*#{1,6}\s+`) // markdown headers
+	mdListRe := regexp.MustCompile(`(?m)^\s*[-*+]\s+`)    // markdown lists
+	mdQuoteRe := regexp.MustCompile(`(?m)^\s*>\s+`)       // blockquote
+	mdFmtRe := regexp.MustCompile(`\*\*.+\*\*|__.+__|\*[^\*]+\*|_[^_]+_|` + "`" + `[^` + "`" + `]+` + "`")
+
+	if linkRe.MatchString(body) || urlRe.MatchString(body) || htmlRe.MatchString(body) || mdHeaderRe.MatchString(body) || mdListRe.MatchString(body) || mdQuoteRe.MatchString(body) || mdFmtRe.MatchString(body) {
+		return false
+	}
+	return true
+}
+
 // SendEmail constructs a multipart message with plain text, HTML, embedded images, and attachments.
-func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, plaintextOnly bool, signSMIME bool, encryptSMIME bool) error {
+func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME bool, encryptSMIME bool) error {
 	smtpServer := account.GetSMTPServer()
 	smtpPort := account.GetSMTPPort()
 
@@ -111,6 +133,9 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 	var payloadToEncrypt []byte
 	var innerBodyBytes []byte
 	var err error
+
+	// Detect plaintext-only mode
+	plaintextOnly := detectPlaintextOnly(plainBody, images, attachments)
 
 	// If plaintext-only mode is requested, build a single text/plain part (or a multipart/signed wrapper when signing)
 	if plaintextOnly {
