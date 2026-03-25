@@ -44,7 +44,6 @@ const (
 	focusSignature
 	focusAttachment
 	focusEncryptSMIME
-	focusPlaintextOnly
 	focusSend
 )
 
@@ -59,7 +58,6 @@ type Composer struct {
 	signatureInput  textarea.Model
 	attachmentPaths []string
 	encryptSMIME    bool
-	plaintextOnly   bool
 	width           int
 	height          int
 	confirmingExit  bool
@@ -147,8 +145,6 @@ func NewComposer(from, to, subject, body string, hideTips bool) *Composer {
 	m.focusIndex = focusTo
 	m.toInput.Focus()
 
-	m.plaintextOnly = false
-
 	return m
 }
 
@@ -233,10 +229,9 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.attachmentPaths = append(m.attachmentPaths, msg.Path)
-		// If attachments were added, disable plaintext-only mode (plain text cannot carry attachments)
-		if m.plaintextOnly {
-			m.plaintextOnly = false
-			m.pluginStatus = "Plaintext-only disabled because attachment was added"
+		// Clear any attachment-related plugin status
+		if strings.Contains(m.pluginStatus, "attachment") {
+			m.pluginStatus = ""
 		}
 		return m, nil
 
@@ -410,17 +405,7 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.encryptSMIME = !m.encryptSMIME
 				}
 				return m, nil
-			case focusPlaintextOnly:
-				if msg.String() == "enter" || msg.String() == " " {
-					if len(m.attachmentPaths) > 0 {
-						// Do not allow enabling plaintext-only when there are attachments
-						m.pluginStatus = "Cannot enable plaintext-only while attachments are present"
-					} else {
-						m.plaintextOnly = !m.plaintextOnly
-						m.pluginStatus = ""
-					}
-				}
-				return m, nil
+
 			case focusSend:
 				if msg.String() == "enter" {
 					acc := m.getSelectedAccount()
@@ -443,7 +428,6 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							Signature:       m.signatureInput.Value(),
 							SignSMIME:       acc != nil && acc.SMIMESignByDefault,
 							EncryptSMIME:    m.encryptSMIME,
-							PlaintextOnly:   m.plaintextOnly,
 						}
 					}
 				}
@@ -549,15 +533,6 @@ func (m *Composer) View() tea.View {
 		encField = focusedStyle.Render(fmt.Sprintf("> Encrypt Email (S/MIME): %s", encToggle))
 	}
 
-	ptToggle := "[ ]"
-	if m.plaintextOnly {
-		ptToggle = "[x]"
-	}
-	ptField := blurredStyle.Render(fmt.Sprintf("  Send Plain Text Only: %s", ptToggle))
-	if m.focusIndex == focusPlaintextOnly {
-		ptField = focusedStyle.Render(fmt.Sprintf("> Send Plain Text Only: %s", ptToggle))
-	}
-
 	// Build To field with suggestions
 	toFieldView := m.toInput.View()
 	if m.showSuggestions && len(m.suggestions) > 0 {
@@ -604,8 +579,7 @@ func (m *Composer) View() tea.View {
 		tip = "Enter: add file • backspace/d: remove last attachment"
 	case focusEncryptSMIME:
 		tip = "Press Space or Enter to toggle S/MIME encryption on or off."
-	case focusPlaintextOnly:
-		tip = "Send message as plain text only (no HTML or attachments)."
+
 	case focusSend:
 		tip = "Press Enter to send the email."
 	}
@@ -622,7 +596,7 @@ func (m *Composer) View() tea.View {
 		m.signatureInput.View(),
 		attachmentStyle.Render(attachmentField),
 		smimeToggleStyle.Render(encField),
-		smimeToggleStyle.Render(ptField),
+
 		button,
 		"",
 	}
