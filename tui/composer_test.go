@@ -71,11 +71,18 @@ func TestComposerUpdate(t *testing.T) {
 			t.Errorf("After seven Tabs, focusIndex should be %d (focusEncryptSMIME), got %d", focusEncryptSMIME, composer.focusIndex)
 		}
 
+		// Simulate pressing Tab again to move to the 'PlaintextOnly' toggle.
+		model, _ = composer.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+		composer = model.(*Composer)
+		if composer.focusIndex != focusPlaintextOnly {
+			t.Errorf("After eight Tabs, focusIndex should be %d (focusPlaintextOnly), got %d", focusPlaintextOnly, composer.focusIndex)
+		}
+
 		// Simulate pressing Tab again to move to the 'Send' button.
 		model, _ = composer.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 		composer = model.(*Composer)
 		if composer.focusIndex != focusSend {
-			t.Errorf("After eight Tabs, focusIndex should be %d (focusSend), got %d", focusSend, composer.focusIndex)
+			t.Errorf("After nine Tabs, focusIndex should be %d (focusSend), got %d", focusSend, composer.focusIndex)
 		}
 
 		// Simulate one more Tab to wrap around.
@@ -83,7 +90,7 @@ func TestComposerUpdate(t *testing.T) {
 		model, _ = composer.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 		composer = model.(*Composer)
 		if composer.focusIndex != focusTo {
-			t.Errorf("After nine Tabs, focusIndex should wrap to %d (focusTo) since single account skips From, got %d", focusTo, composer.focusIndex)
+			t.Errorf("After ten Tabs, focusIndex should wrap to %d (focusTo) since single account skips From, got %d", focusTo, composer.focusIndex)
 		}
 	})
 
@@ -196,7 +203,7 @@ func TestComposerUpdate(t *testing.T) {
 			t.Errorf("Initial focusIndex should be %d (focusTo), got %d", focusTo, multiComposer.focusIndex)
 		}
 
-		// Tab through all fields: To -> Cc -> Bcc -> Subject -> Body -> Signature -> Attachment -> EncryptSMIME -> Send -> From (wrap)
+		// Tab through all fields: To -> Cc -> Bcc -> Subject -> Body -> Signature -> Attachment -> EncryptSMIME -> PlaintextOnly -> Send -> From (wrap) -> To (wrap)
 		model, _ := multiComposer.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // To -> Cc
 		multiComposer = model.(*Composer)
 		model, _ = multiComposer.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // Cc -> Bcc
@@ -211,7 +218,9 @@ func TestComposerUpdate(t *testing.T) {
 		multiComposer = model.(*Composer)
 		model, _ = multiComposer.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // Attachment -> EncryptSMIME
 		multiComposer = model.(*Composer)
-		model, _ = multiComposer.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // EncryptSMIME -> Send
+		model, _ = multiComposer.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // EncryptSMIME -> PlaintextOnly
+		multiComposer = model.(*Composer)
+		model, _ = multiComposer.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // PlaintextOnly -> Send
 		multiComposer = model.(*Composer)
 		model, _ = multiComposer.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // Send -> From (wrap)
 		multiComposer = model.(*Composer)
@@ -220,7 +229,7 @@ func TestComposerUpdate(t *testing.T) {
 
 		// With multiple accounts, From field should be included in tab order
 		if multiComposer.focusIndex != focusTo {
-			t.Errorf("After nine Tabs with multi-account, focusIndex should wrap to %d (focusTo), got %d", focusTo, multiComposer.focusIndex)
+			t.Errorf("After eleven Tabs with multi-account, focusIndex should wrap to %d (focusTo), got %d", focusTo, multiComposer.focusIndex)
 		}
 	})
 }

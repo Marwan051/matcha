@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/textarea"
@@ -43,6 +44,7 @@ const (
 	focusSignature
 	focusAttachment
 	focusEncryptSMIME
+	focusPlaintextOnly
 	focusSend
 )
 
@@ -57,6 +59,7 @@ type Composer struct {
 	signatureInput  textarea.Model
 	attachmentPaths []string
 	encryptSMIME    bool
+	plaintextOnly   bool
 	width           int
 	height          int
 	confirmingExit  bool
@@ -144,6 +147,8 @@ func NewComposer(from, to, subject, body string, hideTips bool) *Composer {
 	m.focusIndex = focusTo
 	m.toInput.Focus()
 
+	m.plaintextOnly = false
+
 	return m
 }
 
@@ -209,10 +214,7 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Fixed rows: title, from, to, cc, bcc, subject, sig label,
 			// attachment, smime, button, blank, tip, help = 13
 			const fixedRows = 13
-			available := msg.Height - fixedRows
-			if available < 6 {
-				available = 6
-			}
+			available := max(msg.Height-fixedRows, 6)
 			bodyHeight := (available * 55) / 100
 			sigHeight := (available * 15) / 100
 			if bodyHeight < 3 {
@@ -227,12 +229,15 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case FileSelectedMsg:
 		// Avoid duplicates
-		for _, p := range m.attachmentPaths {
-			if p == msg.Path {
-				return m, nil
-			}
+		if slices.Contains(m.attachmentPaths, msg.Path) {
+			return m, nil
 		}
 		m.attachmentPaths = append(m.attachmentPaths, msg.Path)
+		// If attachments were added, disable plaintext-only mode (plain text cannot carry attachments)
+		if m.plaintextOnly {
+			m.plaintextOnly = false
+			m.pluginStatus = "Plaintext-only disabled because attachment was added"
+		}
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -383,6 +388,9 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "backspace", "delete", "d":
 			if m.focusIndex == focusAttachment && len(m.attachmentPaths) > 0 {
 				m.attachmentPaths = m.attachmentPaths[:len(m.attachmentPaths)-1]
+				if len(m.attachmentPaths) == 0 && strings.Contains(m.pluginStatus, "attachment") {
+					m.pluginStatus = ""
+				}
 				return m, nil
 			}
 
@@ -400,6 +408,17 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case focusEncryptSMIME:
 				if msg.String() == "enter" || msg.String() == " " {
 					m.encryptSMIME = !m.encryptSMIME
+				}
+				return m, nil
+			case focusPlaintextOnly:
+				if msg.String() == "enter" || msg.String() == " " {
+					if len(m.attachmentPaths) > 0 {
+						// Do not allow enabling plaintext-only when there are attachments
+						m.pluginStatus = "Cannot enable plaintext-only while attachments are present"
+					} else {
+						m.plaintextOnly = !m.plaintextOnly
+						m.pluginStatus = ""
+					}
 				}
 				return m, nil
 			case focusSend:
@@ -424,6 +443,7 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							Signature:       m.signatureInput.Value(),
 							SignSMIME:       acc != nil && acc.SMIMESignByDefault,
 							EncryptSMIME:    m.encryptSMIME,
+							PlaintextOnly:   m.plaintextOnly,
 						}
 					}
 				}
@@ -529,6 +549,15 @@ func (m *Composer) View() tea.View {
 		encField = focusedStyle.Render(fmt.Sprintf("> Encrypt Email (S/MIME): %s", encToggle))
 	}
 
+	ptToggle := "[ ]"
+	if m.plaintextOnly {
+		ptToggle = "[x]"
+	}
+	ptField := blurredStyle.Render(fmt.Sprintf("  Send Plain Text Only: %s", ptToggle))
+	if m.focusIndex == focusPlaintextOnly {
+		ptField = focusedStyle.Render(fmt.Sprintf("> Send Plain Text Only: %s", ptToggle))
+	}
+
 	// Build To field with suggestions
 	toFieldView := m.toInput.View()
 	if m.showSuggestions && len(m.suggestions) > 0 {
@@ -575,6 +604,8 @@ func (m *Composer) View() tea.View {
 		tip = "Enter: add file • backspace/d: remove last attachment"
 	case focusEncryptSMIME:
 		tip = "Press Space or Enter to toggle S/MIME encryption on or off."
+	case focusPlaintextOnly:
+		tip = "Send message as plain text only (no HTML or attachments)."
 	case focusSend:
 		tip = "Press Enter to send the email."
 	}
@@ -591,6 +622,7 @@ func (m *Composer) View() tea.View {
 		m.signatureInput.View(),
 		attachmentStyle.Render(attachmentField),
 		smimeToggleStyle.Render(encField),
+		smimeToggleStyle.Render(ptField),
 		button,
 		"",
 	}
