@@ -16,12 +16,14 @@ import (
 	"net/textproto"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/floatpane/matcha/clib"
 	"github.com/floatpane/matcha/config"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 	"go.mozilla.org/pkcs7"
 )
 
@@ -60,25 +62,73 @@ func generateMessageID(from string) string {
 	return fmt.Sprintf("<%x@%s>", buf, from)
 }
 
+// containsMarkup returns true if the string contains Markdown or HTML elements.
+func containsMarkup(body string) bool {
+	// Parse the Markdown into an AST. We will consider most AST node kinds as
+	// markup, but treat bare/autolinks (raw URLs) as plaintext for this
+	// detection: if a link node's visible text equals its destination (or is
+	// the destination wrapped in <>), we allow it.
+	source := []byte(body)
+	md := goldmark.New()
+	reader := text.NewReader(source)
+	doc := md.Parser().Parse(reader)
+
+	var hasMarkup bool
+	ast.Walk(doc, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+
+		switch node.Kind() {
+		case ast.KindDocument, ast.KindParagraph, ast.KindText:
+			// not considered formatting
+			return ast.WalkContinue, nil
+		case ast.KindLink:
+			// Check if this is an autolink/raw URL: the link's text equals the
+			// destination. If so, don't treat it as markup for our purposes.
+			linkNode, ok := node.(*ast.Link)
+			if !ok {
+				hasMarkup = true
+				return ast.WalkStop, nil
+			}
+
+			// Collect the visible text of the link
+			var b strings.Builder
+			for c := node.FirstChild(); c != nil; c = c.NextSibling() {
+				if txt, ok := c.(*ast.Text); ok {
+					b.Write(txt.Segment.Value(source))
+				} else {
+					// non-text content inside link -> treat as markup
+					hasMarkup = true
+					return ast.WalkStop, nil
+				}
+			}
+			linkText := b.String()
+			dest := string(linkNode.Destination)
+
+			// Normalize common autolink representations and allow them.
+			if linkText == dest || linkText == "<"+dest+">" {
+				return ast.WalkContinue, nil
+			}
+
+			// Otherwise treat as markup
+			hasMarkup = true
+			return ast.WalkStop, nil
+		default:
+			hasMarkup = true
+			return ast.WalkStop, nil
+		}
+	})
+	return hasMarkup
+}
+
 // detectPlaintextOnly returns true when the body contains only plain text
-// (no images, no attachments, no links, and no common markdown/HTML formatting).
-func detectPlaintextOnly(body string, images map[string][]byte, attachments map[string][]byte) bool {
+// (no images, no attachments, no markdown/HTML formatting that requires multipart).
+func detectPlaintextOnly(body string, images, attachments map[string][]byte) bool {
 	if len(images) > 0 || len(attachments) > 0 {
 		return false
 	}
-
-	linkRe := regexp.MustCompile(`\[[^\]]+\]\([^\)]+\)`)
-	urlRe := regexp.MustCompile(`https?://\S+|www\.\S+`)
-	htmlRe := regexp.MustCompile(`<[^>]+>`)               // crude HTML tag detection
-	mdHeaderRe := regexp.MustCompile(`(?m)^\s*#{1,6}\s+`) // markdown headers
-	mdListRe := regexp.MustCompile(`(?m)^\s*[-*+]\s+`)    // markdown lists
-	mdQuoteRe := regexp.MustCompile(`(?m)^\s*>\s+`)       // blockquote
-	mdFmtRe := regexp.MustCompile(`\*\*.+\*\*|__.+__|\*[^\*]+\*|_[^_]+_|` + "`" + `[^` + "`" + `]+` + "`")
-
-	if linkRe.MatchString(body) || urlRe.MatchString(body) || htmlRe.MatchString(body) || mdHeaderRe.MatchString(body) || mdListRe.MatchString(body) || mdQuoteRe.MatchString(body) || mdFmtRe.MatchString(body) {
-		return false
-	}
-	return true
+	return !containsMarkup(body)
 }
 
 // SendEmail constructs a multipart message with plain text, HTML, embedded images, and attachments.
